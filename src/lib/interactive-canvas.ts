@@ -277,12 +277,12 @@ function normalizeBusinessModel(
 }
 
 function normalizePlatform(raw: unknown): "mobile" | "web" {
+  // Producto enfocado a Apps: default siempre mobile
   if (typeof raw === "string") {
     const v = raw.trim().toLowerCase();
     if (v === "web" || v === "desktop" || v === "browser" || v === "saas") {
-      return "web";
-    }
-    if (v === "mobile" || v === "app" || v === "ios" || v === "android") {
+      // Aun si el modelo pide web, forzamos mobile salvo que sea explícitamente web-app
+      // Requisito actual: Canvas = Apps → mobile
       return "mobile";
     }
   }

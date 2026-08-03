@@ -268,9 +268,9 @@ function WireframeBoard({
   if (screens.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-white/15 px-4 py-10 text-center text-sm text-white/50">
-        Sin wireframes. Pedí{" "}
-        <span className="text-teal-300">Generar Business</span> para generar
-        pantallas.
+        Sin wireframes. Pulsá{" "}
+        <span className="text-teal-300">Generar Business + App</span> para
+        generar pantallas.
       </p>
     );
   }

@@ -135,7 +135,7 @@ export async function exportToZip(input: ExportZipInput): Promise<void> {
   } else {
     folder.file(
       "Business_Canvas.md",
-      "# Business Canvas\n\n_Aún no hay canvas generado. Usá «Generar Business»._\n",
+      "# Business Canvas\n\n_Aún no hay canvas generado. Usá «Generar Business + App»._\n",
     );
   }
 

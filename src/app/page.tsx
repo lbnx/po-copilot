@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChatPanel, type UiMessage } from "@/components/ChatPanel";
+import { ChatPanel, type NextFlowAction, type UiMessage } from "@/components/ChatPanel";
 import { DocsSidebar } from "@/components/DocsSidebar";
 import { DocumentViewer } from "@/components/DocumentViewer";
 import {
@@ -21,7 +21,7 @@ export const WELCOME: UiMessage = {
   id: "welcome",
   role: "assistant",
   content:
-    "Hola, soy PO Copilot.\n\nDescribe tu producto o iniciativa. Haré una Entrevista de Sombreros (5 preguntas).\n\nFlujo:\n1) Responde las preguntas\n2) Escribe generar business → tablero de impacto + Prototipo Visual\n3) Escribe generar documentos → 14 artefactos técnicos\n\nTu sesión se guarda sola. Usá «Nuevo proyecto» para empezar de cero.",
+    "Hola, soy PO Copilot.\n\nDescribe tu app o iniciativa. Haré una Entrevista de Sombreros (5 preguntas).\n\nFlujo:\n1) Responde las preguntas\n2) Pulsá «Generar Business + App» → business + wireframes de app móvil\n3) Pulsá «Generar documentos» → 14 artefactos técnicos\n\nPodés detener la generación en cualquier momento. Tu sesión se guarda sola.",
 };
 
 export default function Home() {
@@ -69,6 +69,19 @@ export default function Home() {
     () => documents.filter((d) => d.status === "ready").length,
     [documents],
   );
+
+  const nextAction: NextFlowAction = useMemo(() => {
+    const hasCanvas = messages.some(
+      (m) =>
+        m.role === "assistant" &&
+        (/<interactive_canvas>/i.test(m.content) ||
+          /"wireframes"\s*:/i.test(m.content) ||
+          /"businessModel"\s*:/i.test(m.content)),
+    );
+    if (!hasCanvas) return "business-canvas";
+    if (readyCount >= 14) return "regenerate-docs";
+    return "documents";
+  }, [messages, readyCount]);
 
   const productName = useMemo(() => {
     const firstUser = messages.find(
@@ -478,7 +491,7 @@ export default function Home() {
                 onClick={stopGeneration}
                 className="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-100"
               >
-                Detener generación
+                Detener generaciones
               </button>
             )}
             <button
@@ -585,6 +598,7 @@ export default function Home() {
           messages={messages}
           input={input}
           isLoading={isLoading}
+          nextAction={nextAction}
           onInputChange={setInput}
           onSend={() => void sendMessage(input)}
           onQuickAction={(text) => void sendMessage(text)}

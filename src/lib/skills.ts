@@ -15,7 +15,7 @@ const PHASE_SKILL_PATHS: Record<AgentPhase, string[]> = {
 };
 
 const CANVAS_INTENT =
-  /\b(generar\s+business|business\s*&\s*canvas|business\s+and\s+canvas|prototipo|prototype|canvas|wireframe|wireframes|pantallas|figma|design\s*system|mockup|mockups|tablero\s+visual)\b/i;
+  /\b(generar\s+business|business\s*\+\s*app|business\s+y\s+canvas|canvas\s+de\s+app|business\s*&\s*canvas|business\s+and\s+canvas|prototipo|prototype|canvas|wireframe|wireframes|pantallas|figma|mockup|mockups|tablero\s+visual)\b/i;
 
 const DOCUMENTS_INTENT =
   /\b(generar\s+documentos|generá\s+los\s+docs|crea\s+los\s+14|factor[ií]a|artefactos|\bFRD\b|\bPRD\b|\bBRD\b|\bMRD\b|\bTRD\b|documentos\s+t[eé]cnicos)\b/i;

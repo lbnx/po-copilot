@@ -16,8 +16,11 @@ export const maxDuration = 300;
 
 const GROQ_MODELS = ["llama-3.1-8b-instant"] as const;
 const HISTORY_WINDOW = 3;
-const DOC_COOLDOWN_MS = 4000;
-const RETRY_COOLDOWN_MS = 5000;
+/** Pausa entre documentos para no chocar TPM de Groq */
+const DOC_COOLDOWN_MS = 10000;
+const RETRY_BASE_MS = 8000;
+const RETRY_MAX_ATTEMPTS = 5;
+const DOC_MAX_TOKENS = 1536;
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -64,10 +67,27 @@ function isQuotaError(err: unknown): boolean {
       : undefined;
   return (
     status === 429 ||
-    /429|rate limit|quota|tokens per day|TPD|TPM|too many requests/i.test(
+    /429|rate limit|quota|tokens per day|TPD|TPM|too many requests|Please try again/i.test(
       message,
     )
   );
+}
+
+/** Extrae segundos sugeridos del mensaje de Groq ("try again in 7.2s"). */
+function parseRetryAfterMs(err: unknown): number | null {
+  const message = err instanceof Error ? err.message : String(err);
+  const match = message.match(/try again in\s+(\d+(?:\.\d+)?)\s*s/i);
+  if (!match) return null;
+  const seconds = Number(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.ceil(seconds * 1000) + 1500;
+}
+
+function retryDelayMs(attempt: number, err: unknown): number {
+  const fromApi = parseRetryAfterMs(err);
+  if (fromApi) return Math.max(fromApi, RETRY_BASE_MS);
+  // Backoff exponencial: 8s, 16s, 32s, 64s…
+  return RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1);
 }
 
 function buildInterviewContext(messages: ChatMessage[]): string {
@@ -144,23 +164,26 @@ async function createGroqStream(
     : new Error("Cuota agotada en Groq");
 }
 
-/** Genera un doc con reintento ante 429. Secuencial estricto (sin Promise.all). */
+/** Genera un doc con reintentos TPM/429 (backoff + no cuelga la app). */
 async function generateOneDocument(
   groq: OpenAI,
   docMessages: OpenAI.Chat.ChatCompletionMessageParam[],
   push: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
-  const maxAttempts = 2;
   let attempt = 0;
 
-  while (attempt < maxAttempts) {
+  while (attempt < RETRY_MAX_ATTEMPTS) {
     if (signal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }
     attempt += 1;
     try {
-      const { stream } = await createGroqStream(groq, docMessages, 2048);
+      const { stream } = await createGroqStream(
+        groq,
+        docMessages,
+        DOC_MAX_TOKENS,
+      );
       let full = "";
       for await (const chunk of stream) {
         if (signal?.aborted) {
@@ -175,22 +198,37 @@ async function generateOneDocument(
       return full;
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) throw err;
-      if (isQuotaError(err) && attempt < maxAttempts) {
+      if (isQuotaError(err) && attempt < RETRY_MAX_ATTEMPTS) {
+        const waitMs = retryDelayMs(attempt, err);
+        const waitSec = Math.ceil(waitMs / 1000);
         console.warn(
-          "[Factoría] 429/TPM — reintento en 5s (intento",
-          attempt,
-          ")",
+          `[Factoría] 429/TPM — reintento ${attempt}/${RETRY_MAX_ATTEMPTS} en ${waitSec}s`,
           err,
         );
-        push("\n⏳ Rate limit (429). Reintentando en 5s...\n");
-        await sleepAbortable(RETRY_COOLDOWN_MS, signal);
+        push(
+          `\n⏳ Límite TPM/429. Reintento automático ${attempt}/${RETRY_MAX_ATTEMPTS} en ${waitSec}s (sin cancelar la cola)…\n`,
+        );
+        // Heartbeats para que el cliente no parezca colgado
+        const slice = Math.min(3000, waitMs);
+        let waited = 0;
+        while (waited < waitMs) {
+          if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+          }
+          const step = Math.min(slice, waitMs - waited);
+          await sleepAbortable(step, signal);
+          waited += step;
+          if (waited < waitMs) {
+            push(`💤 Aún enfriando TPM… (${Math.ceil((waitMs - waited) / 1000)}s)\n`);
+          }
+        }
         continue;
       }
       throw err;
     }
   }
 
-  throw new Error("No se pudo generar el documento tras reintentos");
+  throw new Error("No se pudo generar el documento tras reintentos TPM");
 }
 
 export async function POST(req: Request) {
@@ -247,7 +285,7 @@ export async function POST(req: Request) {
 
         try {
           push(
-            "🏭 Factoría secuencial: 1 doc por vez + pausa 4s (anti-TPM).\n\n",
+            `🏭 Factoría secuencial: 1 doc por vez + pausa ${DOC_COOLDOWN_MS / 1000}s (anti-TPM) + reintentos automáticos.\n\n`,
           );
 
           for (const [i, doc] of DOCUMENT_CATALOG.entries()) {
@@ -319,10 +357,29 @@ export async function POST(req: Request) {
                 );
                 break;
               }
-              const message =
-                err instanceof Error ? err.message : "Error generando documento";
-              console.warn(`[Factoría] Falló ${doc.id}:`, err);
-              push(`\n⚠️ Falló ${doc.id} tras reintentos: ${message}\n\n`);
+              if (isQuotaError(err)) {
+                const waitMs = retryDelayMs(RETRY_MAX_ATTEMPTS, err);
+                push(
+                  `\n⚠️ ${doc.id} agotó reintentos TPM. Enfriando ${Math.ceil(waitMs / 1000)}s y sigo con el siguiente…\n\n`,
+                );
+                try {
+                  await sleepAbortable(waitMs, signal);
+                } catch (sleepErr) {
+                  if (isAbortError(sleepErr) || signal.aborted) {
+                    push(
+                      "\n🛑 Generación detenida por el usuario. Podés modificar el contexto y volver a generar documentos.\n",
+                    );
+                    break;
+                  }
+                }
+              } else {
+                const message =
+                  err instanceof Error
+                    ? err.message
+                    : "Error generando documento";
+                console.warn(`[Factoría] Falló ${doc.id}:`, err);
+                push(`\n⚠️ Falló ${doc.id}: ${message}\n\n`);
+              }
             }
 
             // Pausa anti-TPM entre documentos (excepto el último)
@@ -333,9 +390,20 @@ export async function POST(req: Request) {
                 );
                 break;
               }
-              push("💤 Enfriando TPM (4s)...\n\n");
+              push(
+                `💤 Enfriando TPM (${DOC_COOLDOWN_MS / 1000}s) antes del siguiente…\n\n`,
+              );
               try {
-                await sleepAbortable(DOC_COOLDOWN_MS, signal);
+                const slice = 3000;
+                let waited = 0;
+                while (waited < DOC_COOLDOWN_MS) {
+                  if (signal.aborted) {
+                    throw new DOMException("Aborted", "AbortError");
+                  }
+                  const step = Math.min(slice, DOC_COOLDOWN_MS - waited);
+                  await sleepAbortable(step, signal);
+                  waited += step;
+                }
               } catch (err) {
                 if (isAbortError(err) || signal.aborted) {
                   push(
@@ -345,7 +413,6 @@ export async function POST(req: Request) {
                 }
                 throw err;
               }
-              // Kill switch: justo después del delay
               if (signal.aborted) {
                 push(
                   "\n🛑 Generación detenida por el usuario. Podés modificar el contexto y volver a generar documentos.\n",
@@ -410,9 +477,11 @@ export async function POST(req: Request) {
           "FORMATO OBLIGATORIO AHORA:",
           "Responde SOLO con <interactive_canvas>…JSON…</interactive_canvas>.",
           "REGLA DE IDIOMA ESTRICTO: todos los VALORES del JSON 100% en Español (sin inglés).",
+          "ENFOQUE APP MÓVIL: platform DEBE ser \"mobile\". PROHIBIDO web/desktop.",
+          "ACCIONES INTERNAS: (A) Business Model completo (B) 4–5 pantallas de app específicas (Onboarding, Home, Detalle, Aporte, Perfil).",
           "businessModel: productSummary, glossary, competitorsAndMarket, attributesAndFrictions, legalAndCompliance, objectivesAndKPIs.",
-          "MICRO-COPY +/− (6–10 palabras). Si es fintech: BCP y SEPRELAD en legalAndCompliance y glossary.",
-          "Incluí platform (mobile|web) y wireframes con uiElements en español.",
+          "MICRO-COPY +/− (6–10 palabras). Si es fintech: BCP y SEPRELAD.",
+          "uiElements reales de app en español (navegación inferior, anillo de progreso, botón flotante, etc.).",
         ].join("\n"),
       },
     ];

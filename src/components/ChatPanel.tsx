@@ -14,20 +14,51 @@ export type UiMessage = {
   content: string;
 };
 
+export type NextFlowAction = "business-canvas" | "documents" | "regenerate-docs";
+
 type ChatPanelProps = {
   messages: UiMessage[];
   input: string;
   isLoading: boolean;
+  nextAction: NextFlowAction;
   onInputChange: (value: string) => void;
   onSend: () => void;
   onQuickAction: (text: string) => void;
   onStopGeneration?: () => void;
 };
 
+const ACTION_COPY: Record<
+  NextFlowAction,
+  { label: string; command: string; hint: string }
+> = {
+  "business-canvas": {
+    label: "Generar Business + App",
+    command: [
+      "generar business y canvas de app móvil",
+      "Acciones internas obligatorias:",
+      "1) Business Model completo (resumen, glosario, mercado, atributos/fricciones, legal PY, KPIs)",
+      "2) Canvas de App: 4–5 pantallas móviles específicas (Onboarding KYC, Home/Dashboard, Detalle de meta, Aporte/Checkout, Perfil/Ajustes)",
+      "3) uiElements reales de app (navegación inferior, anillo de progreso, selector de fecha, botón flotante, interruptor)",
+    ].join("\n"),
+    hint: "Entrevista lista → Business + wireframes de App",
+  },
+  documents: {
+    label: "Generar documentos",
+    command: "generar documentos",
+    hint: "Canvas listo → factoría de 14 documentos",
+  },
+  "regenerate-docs": {
+    label: "Regenerar documentos",
+    command: "generar documentos",
+    hint: "Suite existente → regenerar desde cero",
+  },
+};
+
 export function ChatPanel({
   messages,
   input,
   isLoading,
+  nextAction,
   onInputChange,
   onSend,
   onQuickAction,
@@ -35,6 +66,7 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const action = ACTION_COPY[nextAction];
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -64,13 +96,13 @@ export function ChatPanel({
           Briefing del producto
         </h2>
         <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
-          Fases: entrevista →{" "}
+          Flujo: entrevista →{" "}
           <span className="font-medium text-[var(--accent)]">
-            generar business
+            Business + App Canvas
           </span>{" "}
-          (tablero + prototipo) →{" "}
+          →{" "}
           <span className="font-medium text-[var(--accent)]">
-            generar documentos
+            14 documentos
           </span>
           .
         </p>
@@ -107,7 +139,7 @@ export function ChatPanel({
       </div>
 
       <div className="shrink-0 border-t border-[var(--line)] bg-[var(--paper)]/90 px-5 py-4 backdrop-blur">
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
           {isLoading && onStopGeneration ? (
             <button
               type="button"
@@ -118,38 +150,20 @@ export function ChatPanel({
                 className="inline-block h-2.5 w-2.5 rounded-[2px] bg-red-600"
                 aria-hidden
               />
-              Detener generación
+              Detener generaciones
             </button>
-          ) : null}
-          <QuickChip
-            label="Necesito ayuda"
-            onClick={() =>
-              onQuickAction(
-                "No sé cómo responder. Ayúdame con benchmarks y lo que digan los skills.",
-              )
-            }
-            disabled={isLoading}
-          />
-          <QuickChip
-            label="Generar Business"
-            onClick={() => onQuickAction("generar business")}
-            disabled={isLoading}
-          />
-          <QuickChip
-            label="Business & Canvas"
-            onClick={() =>
-              onQuickAction(
-                "generar business con prototipo visual y wireframes de pantallas estilo Figma",
-              )
-            }
-            disabled={isLoading}
-          />
-          <QuickChip
-            label="Generar documentos"
-            onClick={() => onQuickAction("generar documentos")}
-            disabled={isLoading}
-            accent
-          />
+          ) : (
+            <button
+              type="button"
+              onClick={() => onQuickAction(action.command)}
+              disabled={isLoading}
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[var(--accent-deep)] disabled:opacity-40"
+              title={action.hint}
+            >
+              {action.label}
+            </button>
+          )}
+          <p className="text-[11px] text-[var(--muted)]">{action.hint}</p>
         </div>
         <div className="flex items-end gap-2">
           <textarea
@@ -158,7 +172,7 @@ export function ChatPanel({
             onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="Ej: Quiero lanzar una billetera digital para remesas en Paraguay…"
+            placeholder="Ej: Quiero una app de metas de ahorro con KYC en Paraguay…"
             disabled={isLoading}
             className="max-h-40 min-h-[48px] flex-1 resize-none rounded-xl border border-[var(--line)] bg-white px-4 py-3 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--muted)] focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20 disabled:opacity-60"
           />
@@ -166,7 +180,7 @@ export function ChatPanel({
             type="button"
             onClick={onSend}
             disabled={isLoading || !input.trim()}
-            className="inline-flex h-12 shrink-0 items-center justify-center rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:bg-[var(--accent-deep)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-12 shrink-0 items-center justify-center rounded-xl bg-[var(--ink)] px-5 text-sm font-semibold text-[var(--paper)] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Enviar
           </button>
@@ -226,32 +240,5 @@ function AssistantMessage({
         return <InteractiveCanvas key={`c-${index}`} data={segment.data} />;
       })}
     </div>
-  );
-}
-
-function QuickChip({
-  label,
-  onClick,
-  disabled,
-  accent,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  accent?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition disabled:opacity-40 ${
-        accent
-          ? "bg-[var(--accent)]/10 text-[var(--accent-deep)] hover:bg-[var(--accent)]/20"
-          : "bg-[var(--panel)] text-[var(--muted)] ring-1 ring-[var(--line)] hover:text-[var(--ink)]"
-      }`}
-    >
-      {label}
-    </button>
   );
 }
