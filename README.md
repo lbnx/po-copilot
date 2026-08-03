@@ -1,6 +1,6 @@
 # PO Copilot
 
-Aplicación web con Next.js + Tailwind + Google Gemini para briefings de producto y generación de 14 documentos técnicos.
+Aplicación web con Next.js + Tailwind + Groq (`llama-3.3-70b-versatile`) para briefings de producto, canvas interactivo y 14 documentos técnicos.
 
 ## Cómo empezar
 
@@ -10,9 +10,9 @@ Aplicación web con Next.js + Tailwind + Google Gemini para briefings de product
 cp .env.local.example .env.local
 ```
 
-Edita `.env.local` y pega tu `GEMINI_API_KEY` (https://aistudio.google.com/apikey).
+Edita `.env.local` y pega tu `GROQ_API_KEY` (https://console.groq.com/keys).
 
-2. Instala dependencias (si aún no lo hiciste) y arranca:
+2. Instala dependencias y arranca:
 
 ```bash
 npm install
@@ -23,8 +23,8 @@ npm run dev
 
 ## Uso
 
-1. Describe tu producto en el chat (panel izquierdo).
-2. El agente hace 5 preguntas (CPO + Compliance).
-3. Si no sabes una respuesta, pide ayuda con benchmarks o normativas.
-4. Cuando estés listo, escribe **generar documentos**.
-5. Los 14 docs aparecen en la barra derecha; haz clic para leerlos o copiarlos.
+1. Describe tu producto en el chat.
+2. El agente hace 5 preguntas (Entrevista de Sombreros).
+3. Escribe **generar canvas** para el tablero interactivo / wireframes.
+4. Escribe **generar documentos** para los 14 artefactos.
+5. Usa **Nuevo proyecto** para limpiar la sesión guardada.

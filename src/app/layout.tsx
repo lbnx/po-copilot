@@ -17,7 +17,7 @@ const body = Source_Sans_3({
 export const metadata: Metadata = {
   title: "PO Copilot",
   description:
-    "Copiloto de Product Owner: briefing, compliance y 14 documentos técnicos con Gemini.",
+    "Copiloto de Product Owner: briefing, canvas interactivo y 14 documentos técnicos con Groq.",
 };
 
 export default function RootLayout({

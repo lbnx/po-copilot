@@ -1,14 +1,23 @@
 "use client";
 
 import type { TechDocument } from "@/lib/documents";
+import { buildProductSlug, downloadDocument } from "@/lib/download";
 
 type DocumentViewerProps = {
   document: TechDocument | null;
   onClose: () => void;
+  productName?: string;
 };
 
-export function DocumentViewer({ document, onClose }: DocumentViewerProps) {
+export function DocumentViewer({
+  document,
+  onClose,
+  productName = "Producto",
+}: DocumentViewerProps) {
   if (!document) return null;
+
+  const canDownload =
+    document.status === "ready" && document.content.trim().length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-[var(--ink)]/40 backdrop-blur-sm">
@@ -48,14 +57,17 @@ export function DocumentViewer({ document, onClose }: DocumentViewerProps) {
               </p>
               <p className="mt-2 text-sm text-[var(--muted)]">
                 Completa el briefing en el chat y luego escribe{" "}
-                <strong className="text-[var(--accent)]">generar documentos</strong>.
+                <strong className="text-[var(--accent)]">
+                  generar documentos
+                </strong>
+                .
               </p>
             </div>
           )}
         </div>
 
-        {document.status === "ready" && document.content && (
-          <footer className="border-t border-[var(--line)] px-6 py-4">
+        {canDownload && (
+          <footer className="flex flex-wrap gap-2 border-t border-[var(--line)] px-6 py-4">
             <button
               type="button"
               onClick={() => {
@@ -64,6 +76,18 @@ export function DocumentViewer({ document, onClose }: DocumentViewerProps) {
               className="rounded-xl bg-[var(--ink)] px-4 py-2.5 text-sm font-medium text-[var(--paper)] hover:opacity-90"
             >
               Copiar contenido
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                downloadDocument(
+                  `${buildProductSlug(productName)}_${document.shortName}`,
+                  document.content,
+                )
+              }
+              className="rounded-xl border border-[var(--line)] bg-white px-4 py-2.5 text-sm font-medium text-[var(--ink)] hover:border-[var(--accent)] hover:text-[var(--accent-deep)]"
+            >
+              Descargar .md
             </button>
           </footer>
         )}

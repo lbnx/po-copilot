@@ -1,0 +1,310 @@
+html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Visual - Ahorro Programado Banco Familiar</title>
+    <style>
+        :root {
+            --brand-primary: #003366;
+            --brand-secondary: #00A859;
+            --brand-accent: #FF9900;
+            --brand-danger: #E53935;
+            --bg-light: #F4F6F8;
+            --surface: #FFFFFF;
+            --text-dark: #1E293B;
+            --text-muted: #64748B;
+            --border-color: #E2E8F0;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+            background-color: var(--bg-light);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 24px;
+        }
+
+        .header {
+            background-color: var(--brand-primary);
+            color: white;
+            padding: 24px 32px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 { margin: 0; font-size: 24px; font-weight: 700; }
+        .header p { margin: 4px 0 0 0; opacity: 0.85; font-size: 14px; }
+        .badge {
+            background-color: var(--brand-secondary);
+            color: white;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        /* Business Model Canvas Grid */
+        .section-title {
+            font-size: 18px;
+            color: var(--brand-primary);
+            margin-bottom: 16px;
+            border-bottom: 2px solid var(--brand-secondary);
+            padding-bottom: 6px;
+            display: inline-block;
+        }
+
+        .canvas-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-template-rows: repeat(3, auto);
+            gap: 12px;
+            margin-bottom: 32px;
+        }
+
+        .canvas-card {
+            background: var(--surface);
+            border-radius: 8px;
+            padding: 16px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .canvas-card h3 {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--brand-primary);
+            margin-top: 0;
+            margin-bottom: 10px;
+            border-bottom: 1px dashed var(--border-color);
+            padding-bottom: 4px;
+        }
+
+        .canvas-card ul { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.5; color: #334155; }
+        .canvas-card li { margin-bottom: 6px; }
+
+        /* Custom Grid Spans for Canvas */
+        .col-partner { grid-column: 1; grid-row: 1 / span 2; }
+        .col-activities { grid-column: 2; grid-row: 1; }
+        .col-resources { grid-column: 2; grid-row: 2; }
+        .col-value { grid-column: 3; grid-row: 1 / span 2; background-color: #F0FDF4; border-color: #BBF7D0; }
+        .col-relations { grid-column: 4; grid-row: 1; }
+        .col-channels { grid-column: 4; grid-row: 2; }
+        .col-segments { grid-column: 5; grid-row: 1 / span 2; }
+        .col-cost { grid-column: 1 / span 2; grid-row: 3; }
+        .col-revenue { grid-column: 3 / span 3; grid-row: 3; }
+
+        /* UI Figma Preview Section */
+        .preview-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .phone-mockup {
+            background: white;
+            border-radius: 20px;
+            border: 8px solid #1E293B;
+            padding: 16px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .phone-header {
+            font-weight: bold;
+            color: var(--brand-primary);
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+
+        .progress-circle {
+            background: #E6F4EA;
+            border-radius: 50%;
+            width: 100px;
+            height: 100px;
+            margin: 16px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: var(--brand-secondary);
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background-color: var(--brand-secondary);
+            color: white;
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-top: 12px;
+        }
+
+        .btn-warning {
+            background-color: #FEF3C7;
+            color: #92400E;
+            border: 1px solid #FCD34D;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 11px;
+            margin-top: 10px;
+        }
+
+        .design-tokens {
+            display: flex;
+            gap: 16px;
+            margin-top: 12px;
+        }
+
+        .color-chip {
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: white;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        @media print {
+            body { padding: 0; background: white; }
+            .phone-mockup { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div>
+            <h1>Banco Familiar · Product Canvas</h1>
+            <p>Módulo de Ahorro Programado <i>"Mis Metas"</i> (MVP Mobile)</p>
+        </div>
+        <div class="badge">Fase 3: Visión & UX</div>
+    </div>
+
+    <h2 class="section-title">1. Business Model Canvas</h2>
+    <div class="canvas-grid">
+        <div class="canvas-card col-partner">
+            <h3>8. Socios Clave</h3>
+            <ul>
+                <li>Proveedor Core Bancario / APIs</li>
+                <li>Motor Notificaciones Push/WhatsApp</li>
+                <li>Reguladores (BCP)</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-activities">
+            <h3>6. Actividades Clave</h3>
+            <ul>
+                <li>Desarrollo App Mobile & Backend</li>
+                <li>Gestión de tasas e interés</li>
+                <li>Monitoreo de conversiones</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-resources">
+            <h3>7. Recursos Clave</h3>
+            <ul>
+                <li>App Móvil Banco Familiar</li>
+                <li>Motor de Débitos Automáticos</li>
+                <li>Liquidez y Balance Financiero</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-value">
+            <h3>2. Propuesta de Valor</h3>
+            <ul>
+                <li><b>Débito Automático:</b> Hasta 1.000.000 Gs/mes sin fricción.</li>
+                <li><b>Premio al cumplimiento:</b> 3% a 5% TEA.</li>
+                <li><b>Resguardo total:</b> 100% Capital garantizado en retiro anticipado.</li>
+                <li><b>Gamificación:</b> Metas visuales y certificado digital.</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-relations">
+            <h3>4. Relación Clientes</h3>
+            <ul>
+                <li>Autoservicio 100% digital</li>
+                <li>Acompañamiento motivacional</li>
+                <li>Transparencia en penalización</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-channels">
+            <h3>3. Canales</h3>
+            <ul>
+                <li>App Mobile (iOS / Android)</li>
+                <li>Notificaciones Push & WhatsApp</li>
+                <li>Home Banking Web</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-segments">
+            <h3>1. Segmentos Clientes</h3>
+            <ul>
+                <li>Clientes con Caja de Ahorro activa.</li>
+                <li>Ahorristas con meta concreta (Auto, Vacaciones, Emergencias).</li>
+                <li>Usuarios que buscan disciplina financiera automatizada.</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-cost">
+            <h3>9. Estructura de Costos</h3>
+            <ul>
+                <li>Desarrollo e infraestructura Cloud/Middleware.</li>
+                <li>Costo del pago de Intereses (TEA).</li>
+                <li>Costos transaccionales de notificaciones.</li>
+            </ul>
+        </div>
+        <div class="canvas-card col-revenue">
+            <h3>5. Fuentes de Ingresos</h3>
+            <ul>
+                <li><b>Spread Financiero:</b> Captación de fondos de bajo costo.</li>
+                <li>Aumento de retención/fidelización en App.</li>
+                <li>Cross-selling de productos de crédito.</li>
+            </ul>
+        </div>
+    </div>
+
+    <h2 class="section-title">2. Vista Previa de Pantallas Figma (MVP)</h2>
+    <div class="preview-grid">
+        <div class="phone-mockup">
+            <div class="phone-header">01. Mis Metas (Dashboard)</div>
+            <p style="font-size: 11px; color: var(--text-muted); text-align: center;">Total Ahorrado: <b>Gs. 2.500.000</b></p>
+            <div class="progress-circle">
+                <span style="font-size: 20px;">65%</span>
+                <span style="font-size: 9px; color: #555;">Mi Auto</span>
+            </div>
+            <p style="font-size: 11px; text-align: center;">Próximo débito: 05/Nov (Gs. 500.000)</p>
+            <div class="btn-primary">+ Nueva Meta</div>
+        </div>
+
+        <div class="phone-mockup">
+            <div class="phone-header">02. Configuración de Meta</div>
+            <p style="font-size: 11px;">Monto Mensual (Máx. 1.000.000 Gs):</p>
+            <div style="background: #F1F5F9; padding: 8px; border-radius: 6px; font-weight: bold; font-size: 13px;">Gs. 1.000.000</div>
+            <p style="font-size: 11px; margin-top: 8px;">Día de Débito: <b>Día 10 de cada mes</b></p>
+            <p style="font-size: 11px;">Plazo: <b>12 Meses</b> (TEA Estimada: 5%)</p>
+            <div class="btn-primary">Confirmar con PIN / Biometría</div>
+        </div>
+
+        <div class="phone-mockup">
+            <div class="phone-header">03. Retiro / Cancelación</div>
+            <div class="btn-warning">
+                ⚠️ <b>Atención:</b> Si retiras hoy recuperas el 100% de tu capital (Gs. 3.000.000), pero perderás <b>Gs. 112.500</b> en intereses acumulados.
+            </div>
+            <div class="btn-primary" style="background-color: var(--brand-danger); margin-top: 16px;">Confirmar Retiro de Capital</div>
+        </div>
+    </div>
+
+    <h2 class="section-title">3. Paleta del Design System</h2>
+    <div class="design-tokens">
+        <div class="color-chip" style="background-color: #003366;">Primary: #003366</div>
+        <div class="color-chip" style="background-color: #00A859;">Secondary: #00A859</div>
+        <div class="color-chip" style="background-color: #FF9900;">Warning: #FF9900</div>
+        <div class="color-chip" style="background-color: #E53935;">Danger: #E53935</div>
+    </div>
+
+</body>
+</html>

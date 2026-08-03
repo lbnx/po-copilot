@@ -34,6 +34,10 @@ yarn-error.log*
 .env*
 !.env.local.example
 
+# local SQLite DB (versiones del proyecto)
+/data/*.sqlite
+/data/*.sqlite-*
+
 # vercel
 .vercel
 

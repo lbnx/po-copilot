@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import {
+  InteractiveCanvas,
+  InteractiveCanvasLoading,
+} from "@/components/InteractiveCanvas";
+import { stripDocumentBlocks } from "@/lib/documents";
+import { splitChatContent } from "@/lib/interactive-canvas";
 
 export type UiMessage = {
   id: string;
@@ -15,6 +21,7 @@ type ChatPanelProps = {
   onInputChange: (value: string) => void;
   onSend: () => void;
   onQuickAction: (text: string) => void;
+  onStopGeneration?: () => void;
 };
 
 export function ChatPanel({
@@ -24,6 +31,7 @@ export function ChatPanel({
   onInputChange,
   onSend,
   onQuickAction,
+  onStopGeneration,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -56,8 +64,11 @@ export function ChatPanel({
           Briefing del producto
         </h2>
         <p className="mt-1 max-w-xl text-sm text-[var(--muted)]">
-          Describe tu producto. PO Copilot hará 5 preguntas clave. Cuando
-          estés listo, escribe{" "}
+          Fases: entrevista →{" "}
+          <span className="font-medium text-[var(--accent)]">
+            generar business
+          </span>{" "}
+          (tablero + prototipo) →{" "}
           <span className="font-medium text-[var(--accent)]">
             generar documentos
           </span>
@@ -71,20 +82,18 @@ export function ChatPanel({
             key={m.id}
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
-            <div
-              className={`max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap ${
-                m.role === "user"
-                  ? "bg-[var(--ink)] text-[var(--paper)]"
-                  : "bg-[var(--panel)] text-[var(--ink)] ring-1 ring-[var(--line)]"
-              }`}
-            >
-              {m.role === "assistant" && (
+            {m.role === "user" ? (
+              <div className="max-w-[92%] rounded-2xl bg-[var(--ink)] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-[var(--paper)]">
+                {m.content}
+              </div>
+            ) : (
+              <div className="w-full max-w-[min(100%,920px)]">
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--accent)]">
                   PO Copilot
                 </p>
-              )}
-              {m.content || (isLoading ? "…" : "")}
-            </div>
+                <AssistantMessage content={m.content} isLoading={isLoading} />
+              </div>
+            )}
           </div>
         ))}
         {isLoading && messages[messages.length - 1]?.role === "user" && (
@@ -99,11 +108,38 @@ export function ChatPanel({
 
       <div className="shrink-0 border-t border-[var(--line)] bg-[var(--paper)]/90 px-5 py-4 backdrop-blur">
         <div className="mb-3 flex flex-wrap gap-2">
+          {isLoading && onStopGeneration ? (
+            <button
+              type="button"
+              onClick={onStopGeneration}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+            >
+              <span
+                className="inline-block h-2.5 w-2.5 rounded-[2px] bg-red-600"
+                aria-hidden
+              />
+              Detener generación
+            </button>
+          ) : null}
           <QuickChip
-            label="Necesito ayuda con benchmarks"
+            label="Necesito ayuda"
             onClick={() =>
               onQuickAction(
-                "No sé cómo responder. Ayúdame con benchmarks de competidores y normativas aplicables.",
+                "No sé cómo responder. Ayúdame con benchmarks y lo que digan los skills.",
+              )
+            }
+            disabled={isLoading}
+          />
+          <QuickChip
+            label="Generar Business"
+            onClick={() => onQuickAction("generar business")}
+            disabled={isLoading}
+          />
+          <QuickChip
+            label="Business & Canvas"
+            onClick={() =>
+              onQuickAction(
+                "generar business con prototipo visual y wireframes de pantallas estilo Figma",
               )
             }
             disabled={isLoading}
@@ -137,6 +173,59 @@ export function ChatPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function AssistantMessage({
+  content,
+  isLoading,
+}: {
+  content: string;
+  isLoading: boolean;
+}) {
+  if (!content) {
+    return (
+      <div className="rounded-2xl bg-[var(--panel)] px-4 py-3 text-sm text-[var(--muted)] ring-1 ring-[var(--line)]">
+        {isLoading ? "…" : ""}
+      </div>
+    );
+  }
+
+  const segments = splitChatContent(content);
+  const hasCanvas = segments.some(
+    (s) => s.type === "canvas" || s.type === "canvas-loading",
+  );
+
+  if (!hasCanvas) {
+    const text = stripDocumentBlocks(content);
+    return (
+      <div className="rounded-2xl bg-[var(--panel)] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-[var(--ink)] ring-1 ring-[var(--line)]">
+        {text || (isLoading ? "…" : content)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {segments.map((segment, index) => {
+        if (segment.type === "text") {
+          const text = stripDocumentBlocks(segment.content);
+          if (!text) return null;
+          return (
+            <div
+              key={`t-${index}`}
+              className="rounded-2xl bg-[var(--panel)] px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-[var(--ink)] ring-1 ring-[var(--line)]"
+            >
+              {text}
+            </div>
+          );
+        }
+        if (segment.type === "canvas-loading") {
+          return <InteractiveCanvasLoading key={`l-${index}`} />;
+        }
+        return <InteractiveCanvas key={`c-${index}`} data={segment.data} />;
+      })}
+    </div>
   );
 }
 

@@ -44,6 +44,32 @@ body {
   animation: slide-in 0.28s ease-out;
 }
 
+.bmc-grid {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "partners partners activities activities value value relationships relationships segments segments"
+    "partners partners resources resources value value channels channels segments segments"
+    "costs costs costs costs costs revenues revenues revenues revenues revenues";
+}
+
+@media (max-width: 900px) {
+  .bmc-grid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "value"
+      "segments"
+      "channels"
+      "relationships"
+      "activities"
+      "resources"
+      "partners"
+      "costs"
+      "revenues";
+  }
+}
+
 .prose-doc h1,
 .prose-doc h2,
 .prose-doc h3 {

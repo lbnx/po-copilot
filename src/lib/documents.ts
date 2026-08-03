@@ -1,18 +1,18 @@
 export type DocId =
   | "PRD"
+  | "MRD"
   | "BRD"
-  | "TRD"
+  | "SRD"
+  | "SRS"
   | "FRD"
   | "NFR"
-  | "USER_JOURNEY"
-  | "USER_STORIES"
-  | "DATA_MODEL"
+  | "TRD"
+  | "TDD"
   | "API_SPEC"
-  | "ARCHITECTURE"
-  | "COMPLIANCE"
-  | "SECURITY"
+  | "ADR"
   | "TEST_PLAN"
-  | "ROADMAP";
+  | "RUNBOOK"
+  | "PLAYBOOK";
 
 export type DocStatus = "pending" | "generating" | "ready";
 
@@ -30,85 +30,85 @@ export const DOCUMENT_CATALOG: Omit<TechDocument, "status" | "content">[] = [
     id: "PRD",
     name: "Product Requirements Document",
     shortName: "PRD",
-    focus: "UX, flujos de usuario, criterios de aceptación",
+    focus: "Solo historias de usuario, journeys y criterios de aceptación UX",
+  },
+  {
+    id: "MRD",
+    name: "Market Requirements Document",
+    shortName: "MRD",
+    focus: "Mercado, segmentos, competencia y oportunidades",
   },
   {
     id: "BRD",
     name: "Business Requirements Document",
     shortName: "BRD",
-    focus: "Negocio, KPIs, valor, stakeholders",
+    focus: "Solo métricas, KPIs, ROI, stakeholders y reglas de negocio",
   },
   {
-    id: "TRD",
-    name: "Technical Requirements Document",
-    shortName: "TRD",
-    focus: "Bases de datos, APIs, integraciones",
+    id: "SRD",
+    name: "Software/System Requirements Document",
+    shortName: "SRD",
+    focus: "Requisitos de sistema/software, límites e integraciones externas",
+  },
+  {
+    id: "SRS",
+    name: "Software Requirements Specification",
+    shortName: "SRS",
+    focus: "Especificación formal de software (alcance, supuestos, glosario)",
   },
   {
     id: "FRD",
     name: "Functional Requirements Document",
     shortName: "FRD",
-    focus: "Requisitos funcionales detallados por módulo",
+    focus: "Flujos funcionales detallados, casos de uso y reglas de negocio (sin APIs/DB)",
   },
   {
     id: "NFR",
     name: "Non-Functional Requirements",
     shortName: "NFR",
-    focus: "Performance, disponibilidad, escalabilidad",
+    focus: "Performance, seguridad, disponibilidad, escalabilidad",
   },
   {
-    id: "USER_JOURNEY",
-    name: "User Journey Map",
-    shortName: "Journey",
-    focus: "Mapa de recorridos y momentos críticos",
+    id: "TRD",
+    name: "Technical Requirements Document",
+    shortName: "TRD",
+    focus: "Arquitectura técnica, stack, datos y restricciones de implementación",
   },
   {
-    id: "USER_STORIES",
-    name: "User Stories & Epics",
-    shortName: "Stories",
-    focus: "Épicas, historias y criterios Given/When/Then",
-  },
-  {
-    id: "DATA_MODEL",
-    name: "Data Model / ERD",
-    shortName: "Data",
-    focus: "Entidades, relaciones y diccionario de datos",
+    id: "TDD",
+    name: "Technical Design Document",
+    shortName: "TDD",
+    focus: "Diseño técnico detallado: componentes, secuencias, diagramas",
   },
   {
     id: "API_SPEC",
-    name: "API Specification",
-    shortName: "API",
-    focus: "Endpoints, contratos, errores y auth",
+    name: "API Spec (Especificación de APIs)",
+    shortName: "API Spec",
+    focus: "Solo endpoints, schemas JSON, auth, errores y ejemplos",
   },
   {
-    id: "ARCHITECTURE",
-    name: "Architecture Document",
-    shortName: "Arch",
-    focus: "Componentes, diagramas C4, decisiones técnicas",
-  },
-  {
-    id: "COMPLIANCE",
-    name: "Compliance Matrix",
-    shortName: "Compliance",
-    focus: "BCP, SEPRELAD, normativas locales aplicables",
-  },
-  {
-    id: "SECURITY",
-    name: "Security & Privacy",
-    shortName: "Security",
-    focus: "Amenazas, controles, privacidad de datos",
+    id: "ADR",
+    name: "Architecture Decision Record",
+    shortName: "ADR",
+    focus: "Decisiones arquitectónicas (contexto, opciones, decisión)",
   },
   {
     id: "TEST_PLAN",
-    name: "Test Strategy & Plan",
-    shortName: "QA",
-    focus: "Estrategia de pruebas, casos y riesgos",
+    name: "Test Plan (Plan de pruebas)",
+    shortName: "Test Plan",
+    focus: "Estrategia QA, casos, cobertura y criterios de salida",
   },
   {
-    id: "ROADMAP",
-    name: "Delivery Roadmap",
-    shortName: "Roadmap",
-    focus: "Fases de entrega, MVP y dependencias",
+    id: "RUNBOOK",
+    name: "Runbook (Manual operativo)",
+    shortName: "Runbook",
+    focus: "Operación: despliegue, monitoreo, incidentes y rollback",
+  },
+  {
+    id: "PLAYBOOK",
+    name: "Playbook (Guía de procedimientos)",
+    shortName: "Playbook",
+    focus: "Playbook de lanzamiento, go-to-market y operación de producto",
   },
 ];
 
@@ -141,7 +141,6 @@ export function parseDocumentsFromText(
 }
 
 export function stripDocumentBlocks(text: string): string {
-  // Remove complete blocks, then hide any trailing incomplete DOC block while streaming
   let cleaned = text.replace(DOC_BLOCK_REGEX, "");
   cleaned = cleaned.replace(/===DOC:[A-Z_]+===[\s\S]*$/, "");
   return cleaned.trim();
