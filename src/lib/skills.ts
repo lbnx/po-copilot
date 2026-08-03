@@ -10,8 +10,8 @@ const PHASE_SKILL_PATHS: Record<AgentPhase, string[]> = {
   interview: ["cpo-prd-coach/SKILL.md", "product-strategy/SKILL.md"],
   // CPO/negocio + UX/UI diseño
   canvas: ["product-strategy/SKILL.md", "ui-designer/README.md"],
-  // Negocio + PRD coach
-  documents: ["cpo-prd-coach/SKILL.md", "product-strategy/SKILL.md"],
+  // Un solo skill corto: evita 413 en factoría de docs
+  documents: ["cpo-prd-coach/SKILL.md"],
 };
 
 const CANVAS_INTENT =
@@ -21,6 +21,8 @@ const DOCUMENTS_INTENT =
   /\b(generar\s+documentos|generá\s+los\s+docs|crea\s+los\s+14|factor[ií]a|artefactos|\bFRD\b|\bPRD\b|\bBRD\b|\bMRD\b|\bTRD\b|documentos\s+t[eé]cnicos)\b/i;
 
 const SKILL_CHAR_LIMIT = 1200;
+/** Skills aún más cortos en FASE 3 (límite Groq ~6000 tokens input). */
+const DOC_SKILL_CHAR_LIMIT = 600;
 
 function resolveSkillRoots(): string[] {
   return [
@@ -82,9 +84,11 @@ export function phaseLabel(phase: AgentPhase): string {
  */
 export async function loadSkillsForPhase(phase: AgentPhase): Promise<string> {
   const candidates = PHASE_SKILL_PATHS[phase];
+  const charLimit =
+    phase === "documents" ? DOC_SKILL_CHAR_LIMIT : SKILL_CHAR_LIMIT;
   const chunks: string[] = [
     `FASE ACTIVA: ${phaseLabel(phase)}`,
-    `INYECCIÓN HÍBRIDA: hasta ${candidates.length} skills × ${SKILL_CHAR_LIMIT} chars`,
+    `INYECCIÓN HÍBRIDA: hasta ${candidates.length} skills × ${charLimit} chars`,
   ];
 
   let loaded = 0;
@@ -92,11 +96,11 @@ export async function loadSkillsForPhase(phase: AgentPhase): Promise<string> {
     const found = await readSkillFile(rel);
     if (!found) continue;
     loaded += 1;
-    const truncated = found.content.slice(0, SKILL_CHAR_LIMIT);
-    const wasTruncated = found.content.length > SKILL_CHAR_LIMIT;
+    const truncated = found.content.slice(0, charLimit);
+    const wasTruncated = found.content.length > charLimit;
     chunks.push(
       [
-        `----- SKILL FILE: ${found.relative}${wasTruncated ? ` [truncado a ${SKILL_CHAR_LIMIT}]` : ""} -----`,
+        `----- SKILL FILE: ${found.relative}${wasTruncated ? ` [truncado a ${charLimit}]` : ""} -----`,
         truncated,
         `----- END SKILL FILE: ${found.relative} -----`,
       ].join("\n"),

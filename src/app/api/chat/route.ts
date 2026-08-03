@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { DOCUMENT_CATALOG } from "@/lib/documents";
+import { extractJsonObject } from "@/lib/interactive-canvas";
 import {
   detectAgentPhase,
   loadSkillsForPhase,
@@ -16,11 +17,15 @@ export const maxDuration = 300;
 
 const GROQ_MODELS = ["llama-3.1-8b-instant"] as const;
 const HISTORY_WINDOW = 3;
-/** Pausa entre documentos para no chocar TPM de Groq */
-const DOC_COOLDOWN_MS = 10000;
+/** Pausa entre documentos (15s) para reiniciar TPM de Groq */
+const DOC_COOLDOWN_MS = 15000;
 const RETRY_BASE_MS = 8000;
 const RETRY_MAX_ATTEMPTS = 5;
-const DOC_MAX_TOKENS = 1536;
+const DOC_MAX_TOKENS = 1400;
+/** Caps duros para no superar ~6000 tokens de input en Groq */
+const CANVAS_CONTEXT_CHARS = 2200;
+const CANVAS_CONTEXT_CHARS_SLIM = 1200;
+const BRIEF_CHARS = 400;
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -73,6 +78,18 @@ function isQuotaError(err: unknown): boolean {
   );
 }
 
+function isRequestTooLarge(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const status =
+    err && typeof err === "object" && "status" in err
+      ? Number((err as { status?: number }).status)
+      : undefined;
+  return (
+    status === 413 ||
+    /413|request too large|Requested \d+/i.test(message)
+  );
+}
+
 /** Extrae segundos sugeridos del mensaje de Groq ("try again in 7.2s"). */
 function parseRetryAfterMs(err: unknown): number | null {
   const message = err instanceof Error ? err.message : String(err);
@@ -86,32 +103,77 @@ function parseRetryAfterMs(err: unknown): number | null {
 function retryDelayMs(attempt: number, err: unknown): number {
   const fromApi = parseRetryAfterMs(err);
   if (fromApi) return Math.max(fromApi, RETRY_BASE_MS);
-  // Backoff exponencial: 8s, 16s, 32s, 64s…
   return RETRY_BASE_MS * 2 ** Math.max(0, attempt - 1);
 }
 
-function buildInterviewContext(messages: ChatMessage[]): string {
-  const userBits = messages
-    .filter((m) => m.role === "user")
-    .map((m) => m.content.trim())
-    .filter((c) => c.length > 0)
-    .filter(
-      (c) =>
-        !/generar\s+documentos|generá\s+los\s+docs|crea\s+los\s+14/i.test(c),
-    );
-
-  if (userBits.length === 0) {
-    return messages[0]?.content?.slice(0, 2000) ?? "";
-  }
-
-  return userBits.join("\n---\n").slice(0, 2500);
+/** Brief corto del producto (primer mensaje de usuario). */
+function buildProductBrief(messages: ChatMessage[]): string {
+  const firstUser = messages.find(
+    (m) =>
+      m.role === "user" &&
+      m.content.trim().length > 0 &&
+      !/generar\s+documentos|generar\s+business|canvas/i.test(m.content),
+  );
+  return (firstUser?.content ?? messages[0]?.content ?? "")
+    .trim()
+    .slice(0, BRIEF_CHARS);
 }
 
-/** Últimos N mensajes (FASE 2/3) o first+last (FASE 1). */
+/**
+ * Contexto mínimo para FASE 3: JSON del Business/Canvas (truncado).
+ * NO incluye historial completo ni documentos previos.
+ */
+function extractBusinessCanvasContext(
+  messages: ChatMessage[],
+  maxChars = CANVAS_CONTEXT_CHARS,
+): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m.role !== "assistant") continue;
+    if (
+      !/<interactive_canvas>/i.test(m.content) &&
+      !/"businessModel"\s*:/i.test(m.content) &&
+      !/"wireframes"\s*:/i.test(m.content)
+    ) {
+      continue;
+    }
+    try {
+      const json = extractJsonObject(m.content);
+      if (json.startsWith("{")) {
+        return json.slice(0, maxChars);
+      }
+    } catch {
+      // fall through
+    }
+    return m.content.slice(0, maxChars);
+  }
+  return "(Sin Business/Canvas previo. Inferí con [RECOMENDACIÓN] según el brief.)";
+}
+
+function buildDocumentUserMessage(
+  docId: string,
+  brief: string,
+  canvasJson: string,
+): string {
+  return [
+    "BRIEF DEL PRODUCTO (recortado):",
+    brief || "(sin brief)",
+    "",
+    "BUSINESS + APP CANVAS (JSON truncado — fuente de verdad):",
+    canvasJson,
+    "",
+    `INSTRUCCIÓN: Generá SOLO ${docId}. Usá el canvas de arriba. PROHIBIDO inventar otra app.`,
+  ].join("\n");
+}
+
+/** Últimos N mensajes (FASE 1/2). FASE 3 NO usa historial completo. */
 function buildHistoryWindow(
   messages: ChatMessage[],
   phase: "interview" | "canvas" | "documents",
 ): ChatMessage[] {
+  if (phase === "documents") {
+    return [];
+  }
   if (phase === "interview") {
     const first = messages[0];
     const last = messages[messages.length - 1];
@@ -155,7 +217,8 @@ async function createGroqStream(
       return { stream, model };
     } catch (err) {
       lastError = err;
-      if (!isQuotaError(err)) throw err;
+      // 413 no se reintenta aquí con el mismo payload; lo maneja el caller
+      if (!isQuotaError(err) || isRequestTooLarge(err)) throw err;
     }
   }
 
@@ -164,14 +227,15 @@ async function createGroqStream(
     : new Error("Cuota agotada en Groq");
 }
 
-/** Genera un doc con reintentos TPM/429 (backoff + no cuelga la app). */
+/** Genera un doc con reintentos TPM/429 y 413 (payload más chico). */
 async function generateOneDocument(
   groq: OpenAI,
-  docMessages: OpenAI.Chat.ChatCompletionMessageParam[],
+  buildMessages: (slim: boolean) => OpenAI.Chat.ChatCompletionMessageParam[],
   push: (text: string) => void,
   signal?: AbortSignal,
 ): Promise<string> {
   let attempt = 0;
+  let slim = false;
 
   while (attempt < RETRY_MAX_ATTEMPTS) {
     if (signal?.aborted) {
@@ -179,6 +243,7 @@ async function generateOneDocument(
     }
     attempt += 1;
     try {
+      const docMessages = buildMessages(slim);
       const { stream } = await createGroqStream(
         groq,
         docMessages,
@@ -198,6 +263,16 @@ async function generateOneDocument(
       return full;
     } catch (err) {
       if (isAbortError(err) || signal?.aborted) throw err;
+
+      if (isRequestTooLarge(err) && attempt < RETRY_MAX_ATTEMPTS) {
+        slim = true;
+        push(
+          `\n📉 Request too large (413). Reintento ${attempt}/${RETRY_MAX_ATTEMPTS} con contexto más corto…\n`,
+        );
+        await sleepAbortable(1500, signal);
+        continue;
+      }
+
       if (isQuotaError(err) && attempt < RETRY_MAX_ATTEMPTS) {
         const waitMs = retryDelayMs(attempt, err);
         const waitSec = Math.ceil(waitMs / 1000);
@@ -208,7 +283,6 @@ async function generateOneDocument(
         push(
           `\n⏳ Límite TPM/429. Reintento automático ${attempt}/${RETRY_MAX_ATTEMPTS} en ${waitSec}s (sin cancelar la cola)…\n`,
         );
-        // Heartbeats para que el cliente no parezca colgado
         const slice = Math.min(3000, waitMs);
         let waited = 0;
         while (waited < waitMs) {
@@ -219,7 +293,9 @@ async function generateOneDocument(
           await sleepAbortable(step, signal);
           waited += step;
           if (waited < waitMs) {
-            push(`💤 Aún enfriando TPM… (${Math.ceil((waitMs - waited) / 1000)}s)\n`);
+            push(
+              `💤 Aún enfriando TPM… (${Math.ceil((waitMs - waited) / 1000)}s)\n`,
+            );
           }
         }
         continue;
@@ -228,7 +304,7 @@ async function generateOneDocument(
     }
   }
 
-  throw new Error("No se pudo generar el documento tras reintentos TPM");
+  throw new Error("No se pudo generar el documento tras reintentos");
 }
 
 export async function POST(req: Request) {
@@ -265,10 +341,17 @@ export async function POST(req: Request) {
     baseURL: "https://api.groq.com/openai/v1",
   });
 
-  // ─── FASE 3: for...of secuencial + delay 4s + retry 429 + abort ───
+  // ─── FASE 3: secuencial estricto (NUNCA Promise.all) + delay 15s + contexto mínimo ───
   if (phase === "documents") {
-    const interviewContext = buildInterviewContext(messages);
-    const history = buildHistoryWindow(messages, "documents");
+    const productBrief = buildProductBrief(messages);
+    const canvasFull = extractBusinessCanvasContext(
+      messages,
+      CANVAS_CONTEXT_CHARS,
+    );
+    const canvasSlim = extractBusinessCanvasContext(
+      messages,
+      CANVAS_CONTEXT_CHARS_SLIM,
+    );
     const encoder = new TextEncoder();
     const signal = req.signal;
 
@@ -285,11 +368,10 @@ export async function POST(req: Request) {
 
         try {
           push(
-            `🏭 Factoría secuencial: 1 doc por vez + pausa ${DOC_COOLDOWN_MS / 1000}s (anti-TPM) + reintentos automáticos.\n\n`,
+            `🏭 Factoría SECUENCIAL (1 doc a la vez). Contexto mínimo (canvas truncado). Pausa ${DOC_COOLDOWN_MS / 1000}s entre docs (anti-TPM).\n\n`,
           );
 
           for (const [i, doc] of DOCUMENT_CATALOG.entries()) {
-            // Kill switch: inicio de cada iteración
             if (signal.aborted) {
               push(
                 "\n🛑 Generación detenida por el usuario. Podés modificar el contexto y volver a generar documentos.\n",
@@ -308,28 +390,26 @@ export async function POST(req: Request) {
               doc.focus,
             );
 
-            const docMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-              { role: "system", content: system },
-              ...history.map((m) => ({
-                role: m.role as "user" | "assistant",
-                content: m.content,
-              })),
-              {
-                role: "user",
-                content: [
-                  "Contexto entrevista (sombreros):",
-                  interviewContext || "(sin contexto)",
-                  "",
-                  `Generá SOLO ${doc.id} con alta densidad. PROHIBIDO SER ESCUETO.`,
-                ].join("\n"),
-              },
-            ];
+            const buildMessages = (slim: boolean) => {
+              const canvas = slim ? canvasSlim : canvasFull;
+              return [
+                { role: "system" as const, content: system },
+                {
+                  role: "user" as const,
+                  content: buildDocumentUserMessage(
+                    doc.id,
+                    productBrief,
+                    canvas,
+                  ),
+                },
+              ];
+            };
 
             try {
               if (signal.aborted) break;
               const full = await generateOneDocument(
                 groq,
-                docMessages,
+                buildMessages,
                 push,
                 signal,
               );
@@ -357,10 +437,10 @@ export async function POST(req: Request) {
                 );
                 break;
               }
-              if (isQuotaError(err)) {
+              if (isQuotaError(err) || isRequestTooLarge(err)) {
                 const waitMs = retryDelayMs(RETRY_MAX_ATTEMPTS, err);
                 push(
-                  `\n⚠️ ${doc.id} agotó reintentos TPM. Enfriando ${Math.ceil(waitMs / 1000)}s y sigo con el siguiente…\n\n`,
+                  `\n⚠️ ${doc.id} falló (${isRequestTooLarge(err) ? "413" : "TPM"}). Enfriando ${Math.ceil(waitMs / 1000)}s y sigo con el siguiente…\n\n`,
                 );
                 try {
                   await sleepAbortable(waitMs, signal);
@@ -382,7 +462,7 @@ export async function POST(req: Request) {
               }
             }
 
-            // Pausa anti-TPM entre documentos (excepto el último)
+            // Delay agresivo anti-TPM: 15s entre documentos (secuencial, sin Promise.all)
             if (i < DOCUMENT_CATALOG.length - 1) {
               if (signal.aborted) {
                 push(
@@ -391,7 +471,7 @@ export async function POST(req: Request) {
                 break;
               }
               push(
-                `💤 Enfriando TPM (${DOC_COOLDOWN_MS / 1000}s) antes del siguiente…\n\n`,
+                `💤 Esperando ${DOC_COOLDOWN_MS / 1000}s para reiniciar TPM antes del siguiente doc…\n\n`,
               );
               try {
                 const slice = 3000;
@@ -455,8 +535,8 @@ export async function POST(req: Request) {
         "X-Groq-Model": GROQ_MODELS[0],
         "X-Agent-Phase": phase,
         "X-Agent-Phase-Label": encodeURIComponent(phaseLabel(phase)),
-        "X-Doc-Mode": "sequential+delay+retry+abortable",
-        "X-Memory-Window": String(HISTORY_WINDOW),
+        "X-Doc-Mode": "sequential+15s+min-context",
+        "X-Memory-Window": "canvas-only",
       },
     });
   }

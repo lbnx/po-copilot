@@ -186,27 +186,25 @@ export function buildSingleDocumentPrompt(
   docName: string,
   docFocus: string,
 ): string {
-  return `Eres Product Manager Senior de apps. Español (Paraguay). Documentación densa.
+  return `Eres Product Manager Senior de apps. Español (Paraguay). Documentación densa y compacta.
 
-SKILLS:
+SKILL (truncado):
 ${skillsContext}
 
-TAREA: SOLO **${docId}** (${docName}). Foco: ${docFocus}
-
-SUITE (no generes otros ahora):
-${DOC_LIST}
+TAREA: Generá ÚNICAMENTE el documento **${docId}** (${docName}).
+Foco: ${docFocus}
 
 REGLAS:
-1. PROHIBIDO SER ESCUETO. Alta densidad técnica y de negocio de la APP.
-2. Flujos de usuario móvil, casos de borde, reglas de estado según skills.
-3. PRD/BRD/FRD: profundidad máxima. Si falta dato: **[RECOMENDACIÓN]**.
+1. Alta densidad de negocio/funcional de la APP. PROHIBIDO ser escueto genérico.
+2. Usá SOLO el contexto de Business/Canvas del mensaje de usuario.
+3. Si falta dato: **[RECOMENDACIÓN]**.
 4. FRD 100% funcional. Técnico → TRD/SRD/API Spec.
-5. ${FASE2_LANGUAGE_RULE}
-6. Fintech: BCP y SEPRELAD cuando aplique.
+5. Fintech: BCP y SEPRELAD si aplica.
+6. No generes otros documentos de la suite.
 
 FORMATO:
 ===DOC:${docId}===
 # ${docName}
-...contenido denso...
+...contenido...
 ===END:${docId}===`;
 }
